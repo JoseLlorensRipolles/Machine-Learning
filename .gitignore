@@ -103,5 +103,6 @@ venv.bak/
 
 .idea/
 Resources/
+*/Resources/
 TODO
 Playground.py
