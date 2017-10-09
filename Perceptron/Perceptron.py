@@ -1,6 +1,6 @@
 import numpy as np
 
-def perceptron(data, labels, max_iterations = 5000, alpha = 1.0, beta = 0.1):
+def perceptron(data, labels, max_iterations = 500, alpha = 1.0, beta = 0.1):
     data = np.array(data)
     object_length = len(data[0])
     class_number = len(set(labels))
@@ -44,40 +44,4 @@ def perceptron(data, labels, max_iterations = 5000, alpha = 1.0, beta = 0.1):
         if classified_in is labels[i]:
             well_classified += 1
 
-    print('Well classified:',well_classified,'of a total of', len(data), 'objects')
-
-
-
-
-    pass
-
-
-if __name__ == "__main__":
-
-    raw_data = open('Resources/IrisDataset', 'r').read()
-    raw_objects = raw_data.splitlines()
-    objects = []
-
-    for i in range(len(raw_objects)):
-        objects.append([1])
-
-
-    raw_labels = []
-    labels = []
-
-    for i in range(len(raw_objects)):
-        raw_object = raw_objects[i].split(',')
-
-        for j in range(len(raw_object)-1):
-            objects[i].append(float(raw_object[j]))
-        raw_labels.append(raw_object[4])
-
-
-    for raw_label in raw_labels:
-        if raw_label == 'Iris-setosa':
-            labels.append(0)
-        if raw_label == 'Iris-versicolor':
-            labels.append(1)
-        if raw_label == 'Iris-virginica':
-            labels.append(2)
-    perceptron(objects, labels)
+    return 'Well classified: ' + str(well_classified) + ' of a total of ' + str(len(data)) + 'objects'
