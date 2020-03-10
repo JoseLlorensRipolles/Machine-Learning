@@ -78,8 +78,12 @@ def create_dataset():
     features = np.hstack((one_hot_features, quant_features))
 
     tr_data = torch.FloatTensor(features[0:len_tr, :-1])
-    tr_targets = torch.FloatTensor(
-         np.array(data_matrix[0:len_tr, -1]).astype(np.float).reshape((len_tr, 1)))
+
+    original_targets = np.log1p(np.array(data_matrix[0:len_tr, -1]).astype(np.float))
+    mean = np.mean(original_targets)
+    std = np.std(original_targets)
+    print(mean, std)
+    tr_targets = torch.FloatTensor(((original_targets - mean) / std).reshape((len_tr, 1)))
 
     ts_data = torch.FloatTensor(features[len_tr:, :-1])
     ts_targets = torch.FloatTensor(

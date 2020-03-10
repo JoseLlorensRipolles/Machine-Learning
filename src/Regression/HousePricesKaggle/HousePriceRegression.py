@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from torch.optim.lr_scheduler import LambdaLR, StepLR
 from torch.utils.data import DataLoader
 from src.Regression.HousePricesKaggle import Architecture
 from src.Regression.HousePricesKaggle.HousePricesDataset import HousePricesDataset
@@ -13,7 +14,7 @@ def train(device, model, opt, criterion, tr_loader, vl_loader):
     best_validation_epoch = -1
     epoch = -1
 
-    while epoch - best_validation_epoch < 1000:
+    while epoch - best_validation_epoch < 200:
         epoch = epoch + 1
         model.train()
         for data, targets in tr_loader:
@@ -36,8 +37,9 @@ def train(device, model, opt, criterion, tr_loader, vl_loader):
                 torch.save(model.state_dict(), "./resources/model")
                 best_validation = val_loss
                 best_validation_epoch = epoch
+
         print('Train Epoch: {} \tLoss: {:.6f}\tVal: {:.6f}'.format(
-            epoch, loss.item()/100000000, val_loss/100000000))
+            epoch, loss.item(), val_loss))
         tr_losses.append(loss.item())
         val_losses.append(val_loss)
 
@@ -47,9 +49,14 @@ def train(device, model, opt, criterion, tr_loader, vl_loader):
 def test(device, test_loader, input_length):
     model = Architecture.FFNN(input_length).to(device)
     model.load_state_dict(torch.load("./resources/model"))
-    for data, targets in test_loader:
-        data, targets = data.to(device), targets.to(device)
-        output = model(data).tolist()
+    data = HousePricesDataset(train=False).data
+    data = data.to(device)
+    output = model(data).cpu().detach().numpy()
+
+    mean = 12.024057394918406
+    std = 0.39931245219387496
+    output = output*std+mean
+    output = np.expm1(output)
     submission = "Id,SalePrice\n"
     for idx, output in enumerate(output):
         submission += str(idx+1461)+","+str(output[0])+" \n"
@@ -73,8 +80,8 @@ def main():
 
     device = torch.device("cuda")
     model = Architecture.FFNN(input_length).to(device)
-    # opt = torch.optim.Adam(model.parameters(), weight_decay=0.2)
-    opt = torch.optim.SGD(model.parameters(), lr=0.00000001, momentum=0.9)
+    # opt = torch.optim.Adam(model.parameters(), weight_decay=0.1, lr=0.00001)
+    opt = torch.optim.SGD(model.parameters(), lr=0.0001)
     criterion = torch.nn.MSELoss()
     tr_losses, val_losses = train(device, model, opt, criterion, tr_loader, vl_loader)
 
