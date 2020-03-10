@@ -29,20 +29,21 @@ def test(model, test_loader, i):
         test_loss += F.nll_loss(output, targets, reduction='sum')
         correct += torch.argmax(output, dim=1).eq(targets).sum().item()
 
-    print('Accuracy: ', correct/len(test_loader))
+    print('Accuracy: ', correct/len(test_loader.dataset))
 
 
 def main():
     iris_trainset = IrisDataset(train=True)
     iris_testset = IrisDataset(train=False)
 
-    train_loader = DataLoader(iris_trainset, 10)
-    test_loader = DataLoader(iris_testset, 10)
+    train_loader = DataLoader(iris_trainset, 1000)
+    test_loader = DataLoader(iris_testset, 1000)
 
     model = Architecture.FFNN()
-    opt = torch.optim.SGD(model.parameters(), lr=0.01)
+    opt = torch.optim.SGD(model.parameters(), lr=0.001)
 
-    for i in range(1000):
+    # Only using test as val because its a v basic example
+    for i in range(4000):
         train(model, opt, train_loader, i)
         test(model, test_loader, i)
 
