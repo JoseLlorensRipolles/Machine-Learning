@@ -1,13 +1,17 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from torch.optim.lr_scheduler import LambdaLR, StepLR
 from torch.utils.data import DataLoader
 from src.Regression.HousePricesKaggle import Architecture
 from src.Regression.HousePricesKaggle.HousePricesDataset import HousePricesDataset
 
 
-def train(device, model, opt, criterion, tr_loader, vl_loader):
+def train(tr_loader, vl_loader):
+    input_length = tr_loader.dataset.dataset.data.shape[1]
+    device = torch.device("cuda")
+    model = Architecture.FFNN(input_length).to(device)
+    opt = torch.optim.Adam(model.parameters(), lr=1e-5)
+    criterion = torch.nn.MSELoss()
     tr_losses = list()
     val_losses = list()
     best_validation = np.inf
@@ -16,6 +20,9 @@ def train(device, model, opt, criterion, tr_loader, vl_loader):
 
     while epoch - best_validation_epoch < 200:
         epoch = epoch + 1
+        running_tr_loss = 0
+        running_vl_loss = 0
+
         model.train()
         for data, targets in tr_loader:
             data = data.to(device)
@@ -23,30 +30,41 @@ def train(device, model, opt, criterion, tr_loader, vl_loader):
             opt.zero_grad()
             output = model(data)
             loss = criterion(output, targets)
+            running_tr_loss += loss.item()
             loss.backward()
             opt.step()
 
         model.eval()
-        val_loss = 0
         for val_data, val_targets in vl_loader:
             val_data = val_data.to(device)
             val_targets = val_targets.to(device)
             val_output = model(val_data)
-            val_loss += criterion(val_output, val_targets).item()
-            if val_loss < best_validation:
-                torch.save(model.state_dict(), "./resources/model")
-                best_validation = val_loss
-                best_validation_epoch = epoch
+            running_vl_loss += criterion(val_output, val_targets).item()
+
+        tr_loss = running_tr_loss / len(tr_loader)
+        vl_loss = running_vl_loss / len(vl_loader)
+
+        if vl_loss < best_validation:
+            torch.save(model.state_dict(), "./resources/model")
+            best_validation = vl_loss
+            best_validation_epoch = epoch
 
         print('Train Epoch: {} \tLoss: {:.6f}\tVal: {:.6f}'.format(
-            epoch, loss.item(), val_loss))
-        tr_losses.append(loss.item())
-        val_losses.append(val_loss)
+            epoch, tr_loss, vl_loss))
+        tr_losses.append(tr_loss)
+        val_losses.append(vl_loss)
 
-    return tr_losses, val_losses
+    print("Min val:", np.min(val_losses))
+    plt.semilogy(tr_losses, label="Tr")
+    plt.semilogy(val_losses, label="Val")
+    plt.legend()
+    plt.show()
 
 
-def test(device, test_loader, input_length):
+
+def test(test_loader):
+    input_length = test_loader.dataset.data.shape[1]
+    device = torch.device("cuda")
     model = Architecture.FFNN(input_length).to(device)
     model.load_state_dict(torch.load("./resources/model"))
     data = HousePricesDataset(train=False).data
@@ -56,14 +74,8 @@ def test(device, test_loader, input_length):
     mean = 12.024057394918406
     std = 0.39931245219387496
     output = output*std+mean
-    output = np.expm1(output)
-    submission = "Id,SalePrice\n"
-    for idx, output in enumerate(output):
-        submission += str(idx+1461)+","+str(output[0])+" \n"
-    submission = submission[:-3]
-    f = open("./resources/submission.csv", "w")
-    f.write(submission)
-    f.close()
+    return np.expm1(output)
+
 
 
 
@@ -76,21 +88,19 @@ def main():
     tr_loader = DataLoader(tr_set, 2000, shuffle=True)
     vl_loader = DataLoader(val_set, 2000, shuffle=True)
     ts_loader = DataLoader(ts_set, 2000)
-    input_length = set.data.shape[1]
 
-    device = torch.device("cuda")
-    model = Architecture.FFNN(input_length).to(device)
-    # opt = torch.optim.Adam(model.parameters(), weight_decay=0.1, lr=0.00001)
-    opt = torch.optim.SGD(model.parameters(), lr=0.0001)
-    criterion = torch.nn.MSELoss()
-    tr_losses, val_losses = train(device, model, opt, criterion, tr_loader, vl_loader)
-
-    test(device, ts_loader, input_length)
-    print("Min val:", np.min(val_losses)/100000000)
-    plt.semilogy(tr_losses, label="Tr")
-    plt.semilogy(val_losses, label="Val")
-    plt.legend()
-    plt.show()
+    output = np.zeros((ts_set.data.shape[0], 1))
+    for i in range(5):
+        train(tr_loader, vl_loader)
+        output += test(ts_loader)
+    output = output/5
+    submission = "Id,SalePrice\n"
+    for idx, output in enumerate(output):
+        submission += str(idx+1461)+","+str(output[0])+" \n"
+    submission = submission[:-3]
+    f = open("./resources/submission.csv", "w")
+    f.write(submission)
+    f.close()
 
 
 if __name__ == '__main__':

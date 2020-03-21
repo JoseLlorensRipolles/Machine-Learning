@@ -1,79 +1,151 @@
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import scipy.stats as stats
-from sklearn.preprocessing import LabelEncoder
-from sklearn.preprocessing import OneHotEncoder
+from collections import Counter
+import matplotlib.pyplot as plt
 import seaborn as sns
-from scipy.stats import norm, skew
-
-def one_hot_encode(data_matrix, cols_to_encode):
-    label_encoder = LabelEncoder()
-    onehot_encoder = OneHotEncoder(sparse=False, drop='first')
-    new_matrix = np.array(data_matrix[:, 0]).reshape(data_matrix.shape[0], 1)
-    for col_idx in cols_to_encode:
-        col = data_matrix[:, col_idx]
-        integer_encoded = label_encoder.fit_transform(col)
-        integer_encoded = integer_encoded.reshape(len(integer_encoded), 1)
-        col = onehot_encoder.fit_transform(integer_encoded).astype('float')
-        mean = np.mean(col)
-        std = np.std(col)
-        col = (col - mean) / std
-        new_matrix = np.hstack((new_matrix, col))
-    return new_matrix[:, 1:]
+import sklearn.linear_model.ridge
+from sklearn.linear_model import Ridge
 
 
-def quantitative_features(data_matrix, cols_to_quant):
-    for col_idx in cols_to_quant:
-        col = data_matrix[:, col_idx]
-        numbers = np.where(col != "NA")[0]
-        mean = col[numbers].astype('float').mean()
-        col = np.where(col == "NA", mean, col).reshape((len(col), 1)).astype('float')
-        new_matrix = np.hstack((new_matrix, col))
-    return new_matrix[:, 1:]
+def fill_column(column):
+    median = np.nanmedian(column)
+    column[np.isnan(column)] = median
+    return column
 
 
-def get_skip_cols(data_matrix):
-    skip_cols = list()
-    for i in range(data_matrix.shape[1]):
-        missing_values = np.sum(np.where(data_matrix[:, i] == 'NA', 1, 0))
-        if missing_values/data_matrix.shape[0] > 0.4:
-            skip_cols.append(i)
-    print(skip_cols)
-    return skip_cols
+def normalise(column):
+    return (column - np.mean(column)) / np.std(column)
 
 
-def fill_columns(df):
-    for (col_name, col_data) in df.iteritems():
-        idx = np.where(np.array(col_data != 'NA'))[0]
-        values = col_data[idx]
-        mean = values.mean()
-        pass
+def nan_count_per_feature(df):
+    nan_count = dict()
+    for feature in df.columns:
+        nan_count[feature] = np.count_nonzero(df[feature].values == 'NA')/df.shape[0]
+    nan_count = {k: v for k, v in sorted(nan_count.items(), key=lambda item: item[1]) if v > 0}
+    plt.xticks(fontsize=10, rotation=70)
+    plt.bar(nan_count.keys(), nan_count.values())
+    plt.tight_layout()
+    plt.show()
+
+
+def categorical_features_histogram(df):
+    features = ['Utilities']
+    n = int(np.math.sqrt(len(features)))
+    for idx, feature in enumerate(features):
+        count = Counter(df[feature])
+        count = {k: v for k, v in sorted(count.items(), key=lambda item: item[1])}
+        plt.subplot(n, n, idx+1)
+        plt.xticks(fontsize=10, rotation=70)
+        plt.title(feature)
+        plt.bar(count.keys(), count.values())
+        plt.tight_layout()
+    plt.show()
+
+
+def quantitative_features_histogram(df):
+    features = ['YearBuilt']
+    n = int(np.math.sqrt(len(features)))
+    for idx, feature in enumerate(features):
+        values = df[feature][df[feature].notna()]
+        plt.subplot(n, n, idx+1)
+        plt.xticks(fontsize=10, rotation=70)
+        plt.title(feature)
+        sns.distplot(values)
+        plt.tight_layout()
+    plt.show()
+
+
+def fill_lot_frontage(df):
+    df_frontage = pd.get_dummies(df.drop('SalePrice', axis=1)).dropna()
+
+    y = df_frontage.LotFrontage
+    X = df_frontage.drop('LotFrontage', axis=1)
+
+    model = Ridge()
+    model.fit(X, y)
+
+    X_ts = pd.get_dummies(df.drop('SalePrice', axis=1))[df['LotFrontage'].isna()].drop('LotFrontage', axis=1)
+    df.loc[df['LotFrontage'].isna(), 'LotFrontage'] = model.predict(X_ts)
+
+def fill_quantitative(df):
+    df['BsmtFullBath'].fillna(0, inplace=True)
+    df['BsmtHalfBath'].fillna(0, inplace=True)
+    df['BsmtFinSF1'].fillna(0, inplace=True)
+    df['BsmtFinSF2'].fillna(0, inplace=True)
+    df['BsmtUnfSF'].fillna(0, inplace=True)
+    df['TotalBsmtSF'].fillna(0, inplace=True)
+    df.loc[df.GarageYrBlt.isnull(), 'GarageYrBlt'] = df.loc[df.GarageYrBlt.isnull(), 'YearBuilt']
+    df['GarageArea'].fillna(0, inplace=True)
+    df['GarageCars'].fillna(0, inplace=True)
+    df['MasVnrArea'].fillna(0, inplace=True)
+
+
+def fill_categorical(df):
+    # False NaN
+    df['Alley'].fillna('None', inplace=True)
+    df['BsmtCond'].fillna('None', inplace=True)
+    df['BsmtExposure'].fillna('None', inplace=True)
+    df['BsmtFinType1'].fillna('None', inplace=True)
+    df['BsmtFinType2'].fillna('None', inplace=True)
+    df['BsmtQual'].fillna('None', inplace=True)
+    df['Fence'].fillna('None', inplace=True)
+    df['FireplaceQu'].fillna('None', inplace=True)
+    df['GarageCond'].fillna('None', inplace=True)
+    df['GarageFinish'].fillna('None', inplace=True)
+    df['GarageQual'].fillna('None', inplace=True)
+    df['GarageType'].fillna('None', inplace=True)
+    df['MiscFeature'].fillna('None', inplace=True)
+    df['PoolQC'].fillna('None', inplace=True)
+
+    # Replace with mode
+    df['SaleType'].fillna('WD', inplace=True)
+    df['Utilities'].fillna('AllPub', inplace=True)
+    df['Electrical'].fillna('SBrkr', inplace=True)
+    df['Exterior1st'].fillna('VinylSd', inplace=True)
+    df['Exterior2nd'].fillna('VinylSd', inplace=True)
+    df['MSZoning'].fillna('RL', inplace=True)
+    df['MasVnrType'].fillna('None', inplace=True)
+    df['KitchenQual'].fillna('TA', inplace=True)
+    df['Functional'].fillna('Typ', inplace=True)
+
+
+def quantitative_features_vs_saleprice(df, quantitative_features):
+    for feature in quantitative_features:
+        x = df['YearBuilt']
+        plt.xlabel('YrBuild')
+        y = df[feature]
+        plt.ylabel(feature)
+        plt.scatter(x, y)
+        plt.title(feature)
+        plt.show()
+
+
+def fix_remod(df):
+    df.loc[df['YearRemodAdd'] == 1950, 'YearRemodAdd'] = df.loc[df['YearRemodAdd'] == 1950, 'YearBuilt']
 
 
 if __name__ == '__main__':
-    #df = pd.DataFrame(data=data_matrix[1:, 1:], index=data_matrix[1:,0], columns=data_matrix[0, 1:])
-    df = pd.read_csv('./resources/train.csv')
-    categorical_cols = np.array([1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 21, 22, 23, 24, 25, 27, 28, 29, 30, 31,
-                        32, 33, 35, 39, 40, 41, 42, 53, 55, 57, 58, 60, 63, 64, 65, 72, 73, 74, 78, 79])
+    df_tr = pd.read_csv('./resources/train.csv')
+    df_ts = pd.read_csv('./resources/test.csv')
+    df = pd.concat([df_tr, df_ts])
+    categorical_columns = np.array(['Alley', 'BldgType', 'BsmtCond', 'BsmtExposure', 'BsmtFinType1', 'BsmtFinType2',
+                                 'BsmtQual', 'CentralAir', 'Condition1', 'Condition2', 'Electrical', 'ExterCond',
+                                 'ExterQual', 'Exterior1st', 'Exterior2nd', 'Fence', 'FireplaceQu', 'Foundation',
+                                 'Functional', 'GarageCond', 'GarageFinish', 'GarageQual', 'GarageType', 'Heating',
+                                 'HeatingQC', 'HouseStyle', 'KitchenQual', 'LandContour', 'LandSlope', 'LotConfig',
+                                 'LotShape', 'MSSubClass', 'MSZoning',  'MasVnrType', 'MiscFeature', 'Neighborhood',
+                                 'PavedDrive', 'PoolQC', 'RoofMatl', 'RoofStyle', 'SaleCondition', 'SaleType', 'Street',
+                                 'Utilities', 'MoSold'])
 
-    # skewness and kurtosis
-    print("Skewness: %f" % df['SalePrice'].skew())
-    print("Kurtosis: %f" % df['SalePrice'].kurt())
-    values = np.log1p(df['SalePrice'].to_numpy())
-    mean = values.mean()
-    std = values.std()
-    x = np.linspace(0, values.max(), 100)
-    y = stats.norm.pdf(x, mean, std)
-    sns.distplot(values)
-    plt.plot(x,y)
-    plt.show()
+    quantitative_columns = np.array(['1stFlrSF', '2ndFlrSF', '3SsnPorch', 'BedroomAbvGr', 'BsmtFinSF1', 'BsmtFinSF2',
+                         'BsmtFullBath', 'BsmtHalfBath', 'BsmtUnfSF', 'EnclosedPorch', 'Fireplaces', 'FullBath',
+                         'GarageArea', 'GarageCars', 'GarageYrBlt', 'GrLivArea', 'HalfBath', 'KitchenAbvGr',
+                         'LotArea', 'LotFrontage', 'LowQualFinSF', 'MasVnrArea', 'MiscVal',
+                         'OpenPorchSF', 'OverallCond', 'OverallQual', 'PoolArea', 'ScreenPorch', 'TotRmsAbvGrd',
+                         'TotalBsmtSF', 'WoodDeckSF', 'YearBuilt', 'YearRemodAdd', 'YrSold'])
 
-    # quantititive_cols = [x for x in range(len(data_matrix[0])) if x not in categorical_cols]
-    # quant_feat = quantitative_features(data_matrix, quantititive_cols)
-    # to_drop = [df.columns[i] for i in categorical_cols]
-    # # df = df.drop(labels=to_drop, axis='columns')
-    # fill_columns(df)
-    # corr = df.corr()
-    # plt.matshow(corr)
-    # plt.show()
+    fill_categorical(df)
+    fill_quantitative(df)
+    fill_lot_frontage(df)
+    fix_remod(df)
+    quantitative_features_vs_saleprice(df, ['YearRemodAdd'])

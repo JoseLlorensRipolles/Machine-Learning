@@ -13,7 +13,7 @@ class HousePricesDataset(Dataset):
             self.targets = torch.load('resources/tr_targets.pt')
         else:
             self.data = torch.load('resources/ts_data.pt')
-            self.targets = torch.load('resources/ts_targets.pt')
+            self.targets = torch.zeros(self.data.shape)
 
     def __len__(self):
         return self.data.shape[0]

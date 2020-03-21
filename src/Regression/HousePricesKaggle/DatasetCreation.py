@@ -1,98 +1,154 @@
-import csv
 import numpy as np
+import pandas as pd
 import torch
-from sklearn.preprocessing import LabelEncoder
-from sklearn.preprocessing import OneHotEncoder
+from sklearn.linear_model import Ridge
 
 
-def one_hot_encode(data_matrix, cols_to_encode):
-    label_encoder = LabelEncoder()
-    onehot_encoder = OneHotEncoder(sparse=False, drop='first')
-    new_matrix = np.array(data_matrix[:, 0]).reshape(data_matrix.shape[0], 1)
-    for col_idx in cols_to_encode:
-        col = data_matrix[:, col_idx]
-        integer_encoded = label_encoder.fit_transform(col)
-        integer_encoded = integer_encoded.reshape(len(integer_encoded), 1)
-        col = onehot_encoder.fit_transform(integer_encoded).astype('float')
-        mean = np.mean(col)
-        std = np.std(col)
-        col = (col - mean) / std
-        new_matrix = np.hstack((new_matrix, col))
-    return new_matrix[:, 1:]
+def z_normalization(df, quantitative_columns):
+    for feature in quantitative_columns:
+        df[feature] = (df[feature] - df[feature].values.mean()) / df[feature].values.std()
 
 
-def quantitative_features(data_matrix, cols_to_quant):
-    new_matrix = np.array(data_matrix[:, 0]).reshape(data_matrix.shape[0], 1)
-    for col_idx in cols_to_quant:
-        col = data_matrix[:, col_idx]
-        numbers = np.where(col != "NA")[0]
-        mean = col[numbers].astype('float').mean()
-        col = np.where(col == "NA", mean, col).reshape((len(col), 1)).astype('float')
-
-        mean = np.mean(col)
-        std = np.std(col)
-        col = (col - mean)/std
-        new_matrix = np.hstack((new_matrix, col))
-    return new_matrix[:, 1:]
+def min_max_nomrmalization(df, quantitative_columns):
+    for feature in quantitative_columns:
+        df[feature] = (df[feature] - df[feature].values.min()) / (df[feature].values.max() - df[feature].values.min())
 
 
-def get_skip_cols(data_matrix):
-    skip_cols = list()
-    for i in range(data_matrix.shape[1]):
-        missing_values = np.sum(np.where(data_matrix[:, i] == 'NA', 1, 0))
-        if missing_values/data_matrix.shape[0] > 0.4:
-            skip_cols.append(i)
-    print(skip_cols)
-    return skip_cols
+def correct_skew(df, quantitative_columns):
+    skew_features = df[quantitative_columns].apply(lambda x: x.skew()).sort_values(ascending=False)
+
+    high_skew = skew_features[skew_features > 0.5]
+    skew_index = high_skew.index
+
+    for i in skew_index:
+        df[i] = np.log1p(df[i])
+
+
+def fill_quantitative(df):
+    df['BsmtFullBath'].fillna(0, inplace=True)
+    df['BsmtHalfBath'].fillna(0, inplace=True)
+    df['BsmtFinSF1'].fillna(0, inplace=True)
+    df['BsmtFinSF2'].fillna(0, inplace=True)
+    df['BsmtUnfSF'].fillna(0, inplace=True)
+    df['TotalBsmtSF'].fillna(0, inplace=True)
+    df.loc[df.GarageYrBlt.isnull(), 'GarageYrBlt'] = df.loc[df.GarageYrBlt.isnull(), 'YearBuilt']
+    df['GarageArea'].fillna(0, inplace=True)
+    df['GarageCars'].fillna(0, inplace=True)
+    df['MasVnrArea'].fillna(0, inplace=True)
+
+    
+def fill_categorical(df):
+    # False NaN
+    df['Alley'].fillna('None', inplace=True)
+    df['BsmtCond'].fillna('None', inplace=True)
+    df['BsmtExposure'].fillna('None', inplace=True)
+    df['BsmtFinType1'].fillna('None', inplace=True)
+    df['BsmtFinType2'].fillna('None', inplace=True)
+    df['BsmtQual'].fillna('None', inplace=True)
+    df['Fence'].fillna('None', inplace=True)
+    df['FireplaceQu'].fillna('None', inplace=True)
+    df['GarageCond'].fillna('None', inplace=True)
+    df['GarageFinish'].fillna('None', inplace=True)
+    df['GarageQual'].fillna('None', inplace=True)
+    df['GarageType'].fillna('None', inplace=True)
+    df['MiscFeature'].fillna('None', inplace=True)
+    df['PoolQC'].fillna('None', inplace=True)
+
+    # Replace with mode
+    df['SaleType'].fillna('WD', inplace=True)
+    df['Utilities'].fillna('AllPub', inplace=True)
+    df['Electrical'].fillna('SBrkr', inplace=True)
+    df['Exterior1st'].fillna('VinylSd', inplace=True)
+    df['Exterior2nd'].fillna('VinylSd', inplace=True)
+    df['MSZoning'].fillna('RL', inplace=True)    
+    df['MasVnrType'].fillna('None', inplace=True)
+    df['KitchenQual'].fillna('TA', inplace=True)
+    df['Functional'].fillna('Typ', inplace=True)
+
+def fill_lot_frontage(df):
+    df_frontage = pd.get_dummies(df.drop('SalePrice', axis=1)).dropna()
+
+    y = df_frontage.LotFrontage
+    X = df_frontage.drop('LotFrontage', axis=1)
+
+    model = Ridge()
+    model.fit(X, y)
+
+    X_ts = pd.get_dummies(df.drop('SalePrice', axis=1))[df['LotFrontage'].isna()].drop('LotFrontage', axis=1)
+    df.loc[df['LotFrontage'].isna(), 'LotFrontage'] = model.predict(X_ts)
+
+def fix_remod(df):
+    df.loc[df['YearRemodAdd'] == 1950, 'YearRemodAdd'] = df.loc[df['YearRemodAdd'] == 1950, 'YearBuilt']
+
+
+def check_nans(df, quantitative_features):
+    for feature in quantitative_features:
+        a = df[feature]
+        if np.any(np.isnan(a.values)):
+            print(feature)
+
+
+def dummy_quantitative(df):
+    cols_to_create_dummy = ['2ndFlrSF', '3SsnPorch', 'BsmtFinSF1', 'BsmtFinSF2', 'EnclosedPorch', 'GarageArea',
+                            'LowQualFinSF', 'MasVnrArea', 'MiscVal', 'OpenPorchSF', 'PoolArea', 'ScreenPorch',
+                            'TotalBsmtSF', 'WoodDeckSF']
+    for col in cols_to_create_dummy:
+        df['Has_'+col] = (df[col]>0).astype(int)
 
 
 def create_dataset():
+    df_tr = pd.read_csv('./resources/train.csv', index_col=0)
+    df_ts = pd.read_csv('./resources/test.csv', index_col=0)
+    df = pd.concat([df_tr, df_ts])
 
-    data_matrix = []
-    len_tr = 0
-    len_ts = 0
+    categorical_columns = np.array(['Alley', 'BldgType', 'BsmtCond', 'BsmtExposure', 'BsmtFinType1', 'BsmtFinType2',
+                                    'BsmtQual', 'CentralAir', 'Condition1', 'Condition2', 'Electrical', 'ExterCond',
+                                    'ExterQual', 'Exterior1st', 'Exterior2nd', 'Fence', 'FireplaceQu', 'Foundation',
+                                    'Functional', 'GarageCond', 'GarageFinish', 'GarageQual', 'GarageType', 'Heating',
+                                    'HeatingQC', 'HouseStyle', 'KitchenQual', 'LandContour', 'LandSlope', 'LotConfig',
+                                    'LotShape', 'MSZoning', 'MasVnrType', 'MiscFeature', 'Neighborhood', 'PavedDrive',
+                                    'PoolQC', 'RoofMatl', 'RoofStyle', 'SaleCondition', 'SaleType', 'Street',
+                                    'Utilities'])
 
-    with open('resources/train.csv', encoding="utf-8") as csv_file:
-        csv_reader = csv.reader(csv_file, delimiter=',')
-        next(csv_reader)
-        for line in csv_reader:
-            data_matrix.append(line)
-            len_tr += 1
+    quantitative_columns = np.array(['1stFlrSF', '2ndFlrSF', '3SsnPorch', 'BedroomAbvGr', 'BsmtFinSF1', 'BsmtFinSF2',
+                                     'BsmtFullBath', 'BsmtHalfBath', 'BsmtUnfSF', 'EnclosedPorch', 'Fireplaces',
+                                     'FullBath',
+                                     'GarageArea', 'GarageCars', 'GarageYrBlt', 'GrLivArea', 'HalfBath', 'KitchenAbvGr',
+                                     'LotArea', 'LotFrontage', 'LowQualFinSF', 'MSSubClass', 'MasVnrArea', 'MiscVal',
+                                     'MoSold',
+                                     'OpenPorchSF', 'OverallCond', 'OverallQual', 'PoolArea', 'ScreenPorch',
+                                     'TotRmsAbvGrd',
+                                     'TotalBsmtSF', 'WoodDeckSF', 'YearBuilt', 'YearRemodAdd', 'YrSold'])
 
-    with open('resources/test.csv', encoding="utf-8") as csv_file:
-        csv_reader = csv.reader(csv_file, delimiter=',')
-        next(csv_reader)
-        for line in csv_reader:
-            line.append("0")
-            data_matrix.append(line)
-            len_ts += 1
+    fill_categorical(df)
+    fill_quantitative(df)
+    fill_lot_frontage(df)
+    fix_remod(df)
+    dummy_quantitative(df)
+    correct_skew(df, quantitative_columns)
+    z_normalization(df, quantitative_columns)
+    # min_max_nomrmalization(df, quantitative_columns)
 
-    data_matrix = np.array(data_matrix)
-    skip_cols = get_skip_cols(data_matrix)
-    to_one_hot_cols = [1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 21, 22, 23, 24, 25, 27, 28, 29, 30, 31,
-                       32, 33, 35, 39, 40, 41, 42, 53, 55, 57, 58, 60, 63, 64, 65, 72, 73, 74, 78, 79]
-    to_one_hot_cols = [x for x in to_one_hot_cols if x not in skip_cols]
-    to_quant_cols = [x for x in range(len(data_matrix[0])) if x not in to_one_hot_cols and x != 0 and x not in skip_cols]
-    one_hot_features = one_hot_encode(data_matrix, to_one_hot_cols).astype(np.float)
-    quant_features = quantitative_features(data_matrix, to_quant_cols).astype(np.float)
-    features = np.hstack((one_hot_features, quant_features))
+    len_tr = 1460
+    categorical_df = pd.get_dummies(df[categorical_columns], drop_first=True)
+    quantitative_df = df[quantitative_columns]
 
-    tr_data = torch.FloatTensor(features[0:len_tr, :-1])
+    targets = df['SalePrice'].values[:len_tr].astype('float')
+    df = pd.concat([categorical_df, quantitative_df.fillna(0)], axis=1)
+    check_nans(df, quantitative_columns)
+    matrix = df.values.astype('float')
 
-    original_targets = np.log1p(np.array(data_matrix[0:len_tr, -1]).astype(np.float))
-    mean = np.mean(original_targets)
-    std = np.std(original_targets)
+    tr_data = torch.FloatTensor(matrix[:len_tr])
+    targets = np.log1p(targets)
+    mean = np.mean(targets)
+    std = np.std(targets)
     print(mean, std)
-    tr_targets = torch.FloatTensor(((original_targets - mean) / std).reshape((len_tr, 1)))
-
-    ts_data = torch.FloatTensor(features[len_tr:, :-1])
-    ts_targets = torch.FloatTensor(
-        np.array(data_matrix[len_tr:, -1]).astype(np.float).reshape((len_ts, 1)))
+    tr_targets = torch.FloatTensor(((targets - mean) / std).reshape((len_tr, 1)))
+    ts_data = torch.FloatTensor(matrix[len_tr:])
 
     torch.save(tr_data, 'resources/tr_data.pt')
     torch.save(tr_targets, 'resources/tr_targets.pt')
     torch.save(ts_data, 'resources/ts_data.pt')
-    torch.save(ts_targets, 'resources/ts_targets.pt')
 
 
 if __name__ == '__main__':
