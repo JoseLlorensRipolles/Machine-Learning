@@ -37,6 +37,7 @@ def test(test_loader):
     input_length = test_loader.dataset.data.shape[1]
     device = torch.device("cuda")
     model = Architecture.FFNN(input_length).to(device)
+    model.eval()
     model.load_state_dict(torch.load("./resources/model"))
     data = HousePricesDataset(train=False).data
     data = data.to(device)
@@ -52,6 +53,8 @@ def test(test_loader):
 
 def main():
     set = HousePricesDataset(train=True)
+    lengths = [1164, 292]
+    tr_set, val_set = torch.utils.data.random_split(set, lengths)
     ts_set = HousePricesDataset(train=False)
 
     tr_loader = DataLoader(set, 2000, shuffle=True)

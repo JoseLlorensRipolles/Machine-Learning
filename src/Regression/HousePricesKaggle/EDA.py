@@ -111,9 +111,9 @@ def fill_categorical(df):
 
 def quantitative_features_vs_saleprice(df, quantitative_features):
     for feature in quantitative_features:
-        x = df['YearBuilt']
-        plt.xlabel('YrBuild')
-        y = df[feature]
+        x = df[feature]
+        plt.xlabel(feature)
+        y = df['SalePrice']
         plt.ylabel(feature)
         plt.scatter(x, y)
         plt.title(feature)
@@ -122,6 +122,18 @@ def quantitative_features_vs_saleprice(df, quantitative_features):
 
 def fix_remod(df):
     df.loc[df['YearRemodAdd'] == 1950, 'YearRemodAdd'] = df.loc[df['YearRemodAdd'] == 1950, 'YearBuilt']
+
+
+def search_specific_row(df):
+    a = df.loc[df['TotRmsAbvGrd'] == 14]
+    pass
+
+
+def remove_outliers(df):
+    df.drop(1299, inplace=True)
+    df.drop(636, inplace=True)
+    df.drop(323, inplace=True)
+    df.drop(524, inplace=True)
 
 
 if __name__ == '__main__':
@@ -148,4 +160,6 @@ if __name__ == '__main__':
     fill_quantitative(df)
     fill_lot_frontage(df)
     fix_remod(df)
-    quantitative_features_vs_saleprice(df, ['YearRemodAdd'])
+    remove_outliers(df)
+    # quantitative_features_vs_saleprice(df, quantitative_columns)
+    search_specific_row(df)

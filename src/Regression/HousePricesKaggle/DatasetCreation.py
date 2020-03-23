@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import torch
 from sklearn.linear_model import Ridge
+from scipy.stats import boxcox
 
 
 def z_normalization(df, quantitative_columns):
@@ -21,7 +22,7 @@ def correct_skew(df, quantitative_columns):
     skew_index = high_skew.index
 
     for i in skew_index:
-        df[i] = np.log1p(df[i])
+        df[i] = boxcox(df[i].add(1), lmbda=0.15)
 
 
 def fill_quantitative(df):
@@ -77,8 +78,16 @@ def fill_lot_frontage(df):
     X_ts = pd.get_dummies(df.drop('SalePrice', axis=1))[df['LotFrontage'].isna()].drop('LotFrontage', axis=1)
     df.loc[df['LotFrontage'].isna(), 'LotFrontage'] = model.predict(X_ts)
 
+
 def fix_remod(df):
     df.loc[df['YearRemodAdd'] == 1950, 'YearRemodAdd'] = df.loc[df['YearRemodAdd'] == 1950, 'YearBuilt']
+
+
+def remove_outliers(df):
+    df.drop(1299, inplace=True)
+    df.drop(636, inplace=True)
+    df.drop(323, inplace=True)
+    df.drop(524, inplace=True)
 
 
 def check_nans(df, quantitative_features):
@@ -94,6 +103,10 @@ def dummy_quantitative(df):
                             'TotalBsmtSF', 'WoodDeckSF']
     for col in cols_to_create_dummy:
         df['Has_'+col] = (df[col]>0).astype(int)
+
+
+def add_extra_features(df):
+    df['TotalSF'] = df['1stFlrSF'] + df['2ndFlrSF'] + df['TotalBsmtSF']
 
 
 def create_dataset():
@@ -124,12 +137,14 @@ def create_dataset():
     fill_quantitative(df)
     fill_lot_frontage(df)
     fix_remod(df)
+    remove_outliers(df)
     dummy_quantitative(df)
+    add_extra_features(df)
     correct_skew(df, quantitative_columns)
     z_normalization(df, quantitative_columns)
     # min_max_nomrmalization(df, quantitative_columns)
 
-    len_tr = 1460
+    len_tr = 1456
     categorical_df = pd.get_dummies(df[categorical_columns], drop_first=True)
     quantitative_df = df[quantitative_columns]
 
